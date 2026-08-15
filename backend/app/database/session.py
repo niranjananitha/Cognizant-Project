@@ -6,15 +6,28 @@ from app.database.base import Base
 
 logger = logging.getLogger(__name__)
 
-# Primary PostgreSQL Connection
 db_url = settings.DATABASE_URL
 
-# Fallback mechanism if PostgreSQL local instance is offline during dev testing
+# Fallback mechanism if MySQL / PostgreSQL local instance is offline during dev testing
 try:
     if "sqlite" in db_url:
         engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    elif "mysql" in db_url:
+        engine = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            connect_args={"connect_timeout": 3}
+        )
     else:
-        engine = create_engine(db_url, pool_pre_ping=True, pool_size=10, max_overflow=20, connect_args={"connect_timeout": 2})
+        engine = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            connect_args={"connect_timeout": 3}
+        )
     
     # Test connection
     with engine.connect() as conn:

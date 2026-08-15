@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     VERSION: str = "2.0.0"
     API_V1_STR: str = "/api"
     
-    # Database
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/medequip"
+    # MySQL Database Connection
+    DATABASE_URL: str = "mysql+pymysql://root:root@localhost:3306/medequip"
     
     # JWT
     JWT_SECRET_KEY: str = "medequip_super_secret_jwt_key_change_in_production_2026!"
