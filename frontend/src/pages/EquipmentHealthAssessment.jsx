@@ -1,54 +1,42 @@
 import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { useEquipment } from '../contexts/EquipmentContext';
+import { machineImages } from '../assets/images';
 
 export default function EquipmentHealthAssessment({ onNavigate }) {
-  // Available categories and machines mapping
+  const { token } = useAuth();
+  const { assets, addServiceStationItem } = useEquipment();
+
+  // Category filters
   const categoriesList = [
-    { id: 'ventilators', name: 'Ventilators', catName: 'Ventilators' },
-    { id: 'monitors', name: 'Patient Monitors', catName: 'Patient Monitors' },
-    { id: 'defibrillators', name: 'Defibrillators', catName: 'Defibrillators' },
-    { id: 'pumps', name: 'Infusion Pumps', catName: 'Infusion Pumps' },
-    { id: 'imaging', name: 'Imaging Systems', catName: 'Imaging Systems' },
-    { id: 'dialysis', name: 'Dialysis Machines', catName: 'Dialysis Machines' },
+    { id: 'ventilators', name: 'Ventilators', catName: 'Ventilators', icon: 'air' },
+    { id: 'monitors', name: 'Patient Monitors', catName: 'Patient Monitors', icon: 'monitor_heart' },
+    { id: 'defibrillators', name: 'Defibrillators', catName: 'Defibrillators', icon: 'ecg_heart' },
+    { id: 'pumps', name: 'Infusion Pumps', catName: 'Infusion Pumps', icon: 'vaccines' },
+    { id: 'imaging', name: 'Imaging Systems', catName: 'Imaging Systems', icon: 'radiology' },
   ];
 
-  const machinesByCategory = {
-    ventilators: [
-      { id: 'VEN-2023-8472', name: 'Respironics V60 Ventilator', location: 'ICU - Bed 04', dept: 'Intensive Care', status: 'Active', manufacturer: 'Philips' },
-      { id: 'VEN-2023-9001', name: 'Servo-u ICU Ventilator', location: 'ICU - Bed 08', dept: 'Intensive Care', status: 'Active', manufacturer: 'Getinge' },
-    ],
-    monitors: [
-      { id: 'MX700-04', name: 'IntelliVue MX700 Monitor', location: 'ICU - Bed 01', dept: 'Intensive Care', status: 'Active', manufacturer: 'Philips' },
-      { id: 'MON-B650-01', name: 'GE Carescape B650', location: 'ICU - Bed 08', dept: 'Intensive Care', status: 'Active', manufacturer: 'GE HealthCare' },
-    ],
-    defibrillators: [
-      { id: 'DEF-402-B', name: 'BeneHeart D3 Defibrillator', location: 'ER Bay 02', dept: 'Emergency', status: 'Maintenance', manufacturer: 'Mindray' },
-      { id: 'DEF-ZOL-03', name: 'Zoll R Series / AED Plus', location: 'CCU - Bed 02', dept: 'Cardiology', status: 'Active', manufacturer: 'Zoll Medical' },
-    ],
-    pumps: [
-      { id: 'INF-3301-P', name: 'Alaris System Infusion Pump', location: 'OR-3', dept: 'Surgery', status: 'Active', manufacturer: 'BD Alaris' },
-      { id: 'INF-ALR-05', name: 'BD Alaris System', location: 'Pediatrics Room 204', dept: 'Pediatrics', status: 'Active', manufacturer: 'BD CareFusion' },
-    ],
-    imaging: [
-      { id: 'MRI-102', name: 'Siemens Magnetom 3.0T MRI', location: 'Radiology Suite 1', dept: 'Radiology', status: 'Active', manufacturer: 'Siemens Healthineers' },
-      { id: 'IMG-XRAY-08', name: 'Siemens Mobilett Elara Max X-ray', location: 'Radiology Suite 3', dept: 'Radiology', status: 'Active', manufacturer: 'Siemens' },
-    ],
-    dialysis: [
-      { id: 'DIA-801-K', name: 'Fresenius 5008S Hemodialysis', location: 'Renal Unit Bay 04', dept: 'Nephrology', status: 'Active', manufacturer: 'Fresenius Medical' },
-    ],
-  };
-
   const [selectedCategory, setSelectedCategory] = useState('ventilators');
-  const [selectedMachineId, setSelectedMachineId] = useState('VEN-2023-8472');
 
-  const currentMachines = machinesByCategory[selectedCategory] || [];
-  const selectedMachine = currentMachines.find((m) => m.id === selectedMachineId) || currentMachines[0] || {
-    id: 'VEN-2023-8472',
+  // Filter machines from live inventory by category
+  const currentCatObj = categoriesList.find((c) => c.id === selectedCategory) || categoriesList[0];
+  const currentMachines = assets.filter((a) => a.category?.toLowerCase() === currentCatObj.catName.toLowerCase());
+  const fallbackMachine = assets[0] || {
+    id: 'AST-8821-V',
     name: 'Respironics V60 Ventilator',
     location: 'ICU - Bed 04',
-    dept: 'Intensive Care',
+    department: 'Intensive Care (ICU)',
     status: 'Active',
-    manufacturer: 'Philips',
+    category: 'Ventilators',
+    manufacturer: 'Philips Healthcare',
   };
+
+  const [selectedMachineId, setSelectedMachineId] = useState(currentMachines[0]?.id || fallbackMachine.id);
+
+  const selectedMachine =
+    assets.find((m) => m.id === selectedMachineId) ||
+    currentMachines[0] ||
+    fallbackMachine;
 
   const [formData, setFormData] = useState({
     temperature: 38.5,
@@ -63,25 +51,25 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
 
   const [analyzing, setAnalyzing] = useState(false);
   const [diagnosisResult, setDiagnosisResult] = useState(null);
+  const [actionSuccess, setActionSuccess] = useState(null);
 
   const handleCategoryChange = (catId) => {
     setSelectedCategory(catId);
-    const available = machinesByCategory[catId] || [];
-    if (available.length > 0) {
-      setSelectedMachineId(available[0].id);
+    const cat = categoriesList.find((c) => c.id === catId);
+    const filtered = assets.filter((a) => a.category?.toLowerCase() === cat.catName.toLowerCase());
+    if (filtered.length > 0) {
+      setSelectedMachineId(filtered[0].id);
     }
   };
 
   const handleDiagnose = async (e) => {
     e.preventDefault();
     setAnalyzing(true);
-
-    const currentCatObj = categoriesList.find((c) => c.id === selectedCategory);
-    const categoryName = currentCatObj ? currentCatObj.catName : 'Ventilators';
+    setActionSuccess(null);
 
     const payload = {
       machine_name: selectedMachine.name,
-      category: categoryName,
+      category: selectedMachine.category || currentCatObj.catName,
       operating_temperature_c: Number(formData.temperature),
       system_pressure_cmh2o: Number(formData.pressure),
       total_operating_hours: Number(formData.hours),
@@ -94,10 +82,13 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
     };
 
     try {
-      // Call FastAPI ML Server
+      // Call FastAPI ML Server with JWT token for authenticated access
       const res = await fetch('http://localhost:8000/api/predict', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
 
@@ -145,19 +136,51 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
     }
   };
 
+  // Dispatch machine to Service Station with selected action type
+  const handleDispatchToServiceStation = (actionType) => {
+    if (!diagnosisResult) return;
+
+    const reasonText = `${diagnosisResult.recommendation} | ML Health Index: ${diagnosisResult.healthIndex}% (Failure Risk: ${diagnosisResult.riskScore}%). Symptoms: ${formData.observation}`;
+    const priorityLevel = diagnosisResult.riskScore > 70 ? 'Critical' : (diagnosisResult.riskScore > 40 ? 'High' : 'Medium');
+
+    addServiceStationItem({
+      id: selectedMachine.id,
+      name: selectedMachine.name,
+      category: selectedMachine.category,
+      department: selectedMachine.department,
+      actionType: actionType,
+      reason: reasonText,
+      priority: priorityLevel,
+      riskScore: diagnosisResult.riskScore,
+    });
+
+    setActionSuccess(`Machine ${selectedMachine.name} (${selectedMachine.id}) successfully dispatched to Service Station under [${actionType}]!`);
+
+    setTimeout(() => {
+      onNavigate('service-station');
+    }, 1200);
+  };
+
   return (
     <div className="p-8 flex flex-col gap-8 max-w-[1600px] mx-auto animate-in fade-in duration-200">
       {/* Title Header */}
       <div className="flex flex-col gap-2 border-b border-outline-variant/40 pb-5">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
           <span className="material-symbols-outlined text-base">health_and_safety</span>
-          Medical Equipment Diagnostics
+          Medical Equipment Diagnostics & AI Triage
         </div>
-        <h1 className="font-display-lg text-3xl font-extrabold text-on-background m-0">Equipment Health Entry</h1>
+        <h1 className="font-display-lg text-3xl font-extrabold text-on-background m-0">Equipment Health Entry & Prediction</h1>
         <p className="font-body-md text-sm text-on-surface-variant m-0">
-          Select equipment category and machine, enter live telemetry readings, and run XGBoost Machine Learning diagnosis.
+          Enter live telemetry readings and run XGBoost Machine Learning triage to send at-risk equipment to Service, Recall, or Replacement.
         </p>
       </div>
+
+      {actionSuccess && (
+        <div className="p-4 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 font-bold text-sm flex items-center gap-3 animate-in fade-in">
+          <span className="material-symbols-outlined text-emerald-700">check_circle</span>
+          <span>{actionSuccess} Redirecting to Service Station...</span>
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -184,38 +207,26 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
                         : 'bg-surface hover:bg-surface-container text-on-surface border-outline-variant/60'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-base">
-                      {cat.id === 'ventilators'
-                        ? 'air'
-                        : cat.id === 'monitors'
-                        ? 'monitor_heart'
-                        : cat.id === 'defibrillators'
-                        ? 'ecg_heart'
-                        : cat.id === 'pumps'
-                        ? 'vaccines'
-                        : cat.id === 'imaging'
-                        ? 'radiology'
-                        : 'water_drop'}
-                    </span>
+                    <span className="material-symbols-outlined text-base">{cat.icon}</span>
                     <span className="truncate">{cat.name}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Step 2: Select Specific Machine Dropdown */}
+            {/* Select Specific Machine Dropdown */}
             <div className="mt-2 flex flex-col gap-1.5">
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                Select Specific Machine:
+                Select Specific Machine in Hospital Fleet:
               </label>
               <select
-                value={selectedMachineId}
+                value={selectedMachine.id}
                 onChange={(e) => setSelectedMachineId(e.target.value)}
                 className="w-full bg-surface border border-outline-variant rounded-xl px-4 py-3 text-sm font-bold text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-sm cursor-pointer"
               >
                 {currentMachines.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name} — ({m.id}) [{m.dept}]
+                    {m.name} — ({m.id}) [{m.department}]
                   </option>
                 ))}
               </select>
@@ -224,188 +235,164 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
             {/* Selected Machine Identity Card */}
             <div className="mt-2 p-4 rounded-xl bg-secondary-container/10 border border-secondary-container/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold shadow">
-                  <span className="material-symbols-outlined text-xl">medical_services</span>
+                <div className="w-12 h-12 rounded-xl bg-surface-container-low border border-outline-variant/60 flex items-center justify-center shrink-0 shadow p-1 overflow-hidden">
+                  <img src={selectedMachine.img || machineImages.ventilator} alt={selectedMachine.name} className="max-h-full max-w-full object-contain" />
                 </div>
                 <div>
                   <div className="font-bold text-on-surface text-sm">{selectedMachine.name}</div>
                   <div className="text-xs text-on-surface-variant flex items-center gap-2 font-mono mt-0.5">
-                    <span>ID: {selectedMachine.id}</span>
+                    <span>ID: <strong className="text-primary font-bold">{selectedMachine.id}</strong></span>
                     <span>•</span>
-                    <span>Loc: {selectedMachine.location}</span>
+                    <span>Dept: {selectedMachine.department}</span>
                   </div>
                 </div>
               </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full border border-emerald-300">
+              <span
+                className={`px-3 py-1 text-xs font-bold rounded-full border ${
+                  selectedMachine.status === 'Active'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                }`}
+              >
                 {selectedMachine.status}
               </span>
             </div>
           </div>
 
           {/* Medical Telemetry Inputs Form */}
-          <form
-            onSubmit={handleDiagnose}
-            className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant flex flex-col gap-6"
-          >
-            <h2 className="text-sm font-bold uppercase tracking-wider text-on-surface flex items-center gap-2 m-0">
+          <form onSubmit={handleDiagnose} className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant space-y-6">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-on-surface flex items-center gap-2 m-0 border-b border-outline-variant/40 pb-3">
               <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-extrabold">2</span>
-              Enter Medical Health & Telemetry Details
+              Enter Clinical Telemetry & Sensor Readings
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Operating Temp */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Operating Temperature (°C)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">thermostat</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.temperature}
-                    onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* System Pressure */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  System Pressure (cmH2O / Output)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">speed</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.pressure}
-                    onChange={(e) => setFormData({ ...formData, pressure: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Total Operating Hours */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Total Operating Hours
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">schedule</span>
-                  <input
-                    type="number"
-                    value={formData.hours}
-                    onChange={(e) => setFormData({ ...formData, hours: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Downtime */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Recent Downtime (Hours)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">timer_off</span>
-                  <input
-                    type="number"
-                    value={formData.downtime}
-                    onChange={(e) => setFormData({ ...formData, downtime: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Battery Voltage */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Backup Battery Voltage (V)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">battery_charging_full</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.batteryVoltage}
-                    onChange={(e) => setFormData({ ...formData, batteryVoltage: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Flow Rate */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Flow Rate / Output Stability (L/min)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-lg">waves</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.flowRate}
-                    onChange={(e) => setFormData({ ...formData, flowRate: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-surface pl-10 pr-4 py-2.5 rounded-xl border border-outline-variant text-sm font-semibold text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Error Code & Observation */}
-            <div className="grid grid-cols-1 gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  System Error Code (If Displayed)
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  Operating Temp (°C)
                 </label>
                 <input
-                  type="text"
-                  value={formData.errorCode}
-                  onChange={(e) => setFormData({ ...formData, errorCode: e.target.value })}
-                  placeholder="e.g. ERR-042-T"
-                  className="w-full bg-surface px-4 py-2.5 rounded-xl border border-outline-variant text-sm font-mono text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none uppercase font-bold"
+                  type="number"
+                  step="0.1"
+                  value={formData.temperature}
+                  onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Maintenance Observation & Clinical Notes
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  System Pressure (cmH2O)
                 </label>
-                <textarea
-                  rows="3"
-                  value={formData.observation}
-                  onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
-                  className="w-full bg-surface p-3 rounded-xl border border-outline-variant text-sm text-on-surface font-medium focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-y"
-                  placeholder="Note any physical wear, unusual noise, fan speed, or calibration drift..."
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.pressure}
+                  onChange={(e) => setFormData({ ...formData, pressure: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  Total Operating Hours
+                </label>
+                <input
+                  type="number"
+                  value={formData.hours}
+                  onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  Recent Downtime (Hours)
+                </label>
+                <input
+                  type="number"
+                  value={formData.downtime}
+                  onChange={(e) => setFormData({ ...formData, downtime: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  Battery / Backup Voltage (V)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.batteryVoltage}
+                  onChange={(e) => setFormData({ ...formData, batteryVoltage: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                  Flow Rate (L/min)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.flowRate}
+                  onChange={(e) => setFormData({ ...formData, flowRate: e.target.value })}
+                  className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+                  required
                 />
               </div>
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-outline-variant/50">
-              <button
-                type="submit"
-                disabled={analyzing}
-                className="bg-gradient-to-r from-primary to-secondary text-white hover:opacity-95 px-8 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-lg cursor-pointer"
-              >
-                {analyzing ? (
-                  <>
-                    <span className="material-symbols-outlined text-xl animate-spin">sync</span>
-                    Executing ML Inference...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-xl">psychology</span>
-                    Run Machine Diagnosis
-                  </>
-                )}
-              </button>
+            <div>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                Active System Error Code (if any)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. ERR-042-T or NONE"
+                value={formData.errorCode}
+                onChange={(e) => setFormData({ ...formData, errorCode: e.target.value })}
+                className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-mono font-bold outline-none focus:border-primary"
+              />
             </div>
+
+            <div>
+              <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+                Clinical Observation Notes
+              </label>
+              <textarea
+                rows="3"
+                value={formData.observation}
+                onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
+                className="w-full bg-surface border border-outline-variant rounded-xl p-3 font-medium outline-none focus:border-primary"
+                placeholder="Describe any abnormal vibrations, sounds, heating, or calibration drift observed..."
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={analyzing}
+              className="w-full bg-primary text-white py-3.5 rounded-xl font-bold text-sm shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {analyzing ? (
+                <>
+                  <span className="material-symbols-outlined text-xl animate-spin">sync</span>
+                  Running XGBoost Machine Learning Model...
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-xl">psychology</span>
+                  Run Machine Health Prediction
+                </>
+              )}
+            </button>
           </form>
         </div>
 
@@ -427,7 +414,7 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
                 {/* Machine Info */}
                 <div className="text-xs text-on-surface-variant font-mono bg-surface p-3 rounded-xl border border-outline-variant/40">
                   <div className="font-bold text-on-surface text-sm">{selectedMachine.name}</div>
-                  <div>Asset ID: {selectedMachine.id} • Dept: {selectedMachine.dept}</div>
+                  <div>Asset ID: {selectedMachine.id} • Dept: {selectedMachine.department}</div>
                 </div>
 
                 {/* Score Gauge */}
@@ -457,7 +444,7 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
                 <div className="p-4 rounded-xl bg-surface border border-outline-variant/60 space-y-2">
                   <div className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-base">diagnosis</span>
-                    Predicted Fix Category
+                    Predicted Fix Recommendation
                   </div>
                   <div className="text-base font-extrabold text-on-surface">{diagnosisResult.fixCategory}</div>
                   <p className="text-xs text-on-surface-variant leading-relaxed font-medium">
@@ -477,17 +464,50 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
                   </div>
                 </div>
 
-                <div className="text-[11px] font-mono text-on-surface-variant text-center">
-                  Engine: <strong className="text-primary">{diagnosisResult.modelUsed}</strong>
-                </div>
+                {/* Task 1 Action Dispatch Buttons */}
+                <div className="border-t border-outline-variant/40 pt-4 space-y-3">
+                  <div className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Take Action (Dispatch to Service Station):
+                  </div>
 
-                <button
-                  onClick={() => onNavigate('service-history')}
-                  className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-lg">history</span>
-                  Save Diagnosis & View Service History
-                </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDispatchToServiceStation('Service')}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-xs shadow transition-all flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-base">build</span>
+                      Send to Service (Maintenance)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDispatchToServiceStation('Recall')}
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-xl font-bold text-xs shadow transition-all flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-base">assignment_return</span>
+                      Initiate Safety Recall
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDispatchToServiceStation('Replaced')}
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold text-xs shadow transition-all flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-base">published_with_changes</span>
+                      Order Unit Replacement
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('service-history')}
+                      className="w-full bg-surface-container text-on-surface hover:bg-surface-container-high py-2.5 rounded-xl font-bold text-xs border border-outline-variant/40 transition-all flex items-center justify-center gap-2 mt-1"
+                    >
+                      <span className="material-symbols-outlined text-base">history</span>
+                      View Service History Log
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="py-16 px-4 flex flex-col items-center justify-center text-center text-on-surface-variant gap-4">
@@ -495,9 +515,9 @@ export default function EquipmentHealthAssessment({ onNavigate }) {
                   <span className="material-symbols-outlined text-3xl">biotech</span>
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-on-surface m-0 mb-1">Awaiting Diagnosis Submission</h3>
+                  <h3 className="text-sm font-bold text-on-surface m-0 mb-1">Awaiting Telemetry Input</h3>
                   <p className="text-xs text-on-surface-variant m-0 max-w-xs">
-                    Select a machine and submit health parameters to run real-time Machine Learning risk predictions.
+                    Select a machine and click "Run Machine Health Prediction" to triage equipment into Service, Recall, or Replacement.
                   </p>
                 </div>
               </div>

@@ -1,144 +1,274 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { useEquipment } from '../contexts/EquipmentContext';
 
 export default function ClinicalDashboard({ onNavigate, searchQuery }) {
-  const categories = [
-    { name: 'Ventilators', total: 12, available: 8, maintenance: 4, health: '85%' },
-    { name: 'Patient Monitors', total: 24, available: 20, maintenance: 4, health: '94%' },
-    { name: 'Imaging Systems (MRI/CT)', total: 6, available: 5, maintenance: 1, health: '90%' },
-    { name: 'Infusion Pumps', total: 45, available: 40, maintenance: 5, health: '96%' },
-    { name: 'Defibrillators', total: 18, available: 15, maintenance: 3, health: '88%' },
+  const { user, token, API_URL, authHeaders } = useAuth();
+  const { assets, serviceStationList, serviceHistoryList } = useEquipment();
+  const [backendStats, setBackendStats] = useState(null);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/dashboard/clinical`, {
+      headers: authHeaders(),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setBackendStats(data);
+      })
+      .catch(() => {});
+  }, [token, API_URL, authHeaders]);
+
+  const categoryConfig = [
+    { name: 'Ventilators', icon: 'air', color: 'text-sky-600 bg-sky-50/50 border-sky-100', desc: 'Critical care & respiratory fleet' },
+    { name: 'Patient Monitors', icon: 'monitor_heart', color: 'text-indigo-600 bg-indigo-50/50 border-indigo-100', desc: 'ICU & bedside telemetry units' },
+    { name: 'Defibrillators', icon: 'ecg_heart', color: 'text-rose-600 bg-rose-50/50 border-rose-100', desc: 'Resuscitation & cardiac response' },
+    { name: 'Infusion Pumps', icon: 'vaccines', color: 'text-teal-600 bg-teal-50/50 border-teal-100', desc: 'Smart IV medication delivery' },
+    { name: 'Imaging Systems', icon: 'radiology', color: 'text-purple-600 bg-purple-50/50 border-purple-100', desc: 'MRI, X-Ray & Ultrasound units' },
   ];
 
-  const recentRequests = [
-    { id: 'SRV-8821', asset: 'Respironics V60', issue: 'Compressor motor vibration detected', priority: 'High', date: 'Today, 09:30 AM' },
-    { id: 'SRV-7104', asset: 'Siemens Magnetom 3.0T', issue: 'Cooling loop pressure warning', priority: 'Medium', date: 'Yesterday' },
-    { id: 'SRV-6590', asset: 'Mindray BeneHeart D3', issue: 'Battery capacitor recall calibration', priority: 'Low', date: '14 Oct 2023' },
-  ];
+  const categories = categoryConfig.map((cfg) => {
+    const catAssets = assets.filter((a) => a.category?.toLowerCase().includes(cfg.name.toLowerCase().split(' ')[0]));
+    const total = catAssets.length || 2;
+    const available = catAssets.filter((a) => a.status === 'Active' || a.status === 'AVAILABLE').length;
+    const inService = catAssets.filter((a) => a.status === 'Maintenance' || a.status === 'Recall').length;
+    const avgHealth = total > 0 ? Math.round(catAssets.reduce((acc, curr) => acc + (curr.health || 95), 0) / total) : 95;
+
+    return {
+      name: cfg.name,
+      icon: cfg.icon,
+      color: cfg.color,
+      desc: cfg.desc,
+      total,
+      available,
+      maintenance: inService,
+      health: avgHealth,
+      healthStr: `${avgHealth}%`,
+    };
+  });
 
   const filteredCategories = categories.filter((cat) =>
     cat.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const atRiskCount = assets.filter((a) => (a.health && a.health < 80) || a.status === 'Maintenance').length;
+  const maintenanceCount = serviceStationList.filter((m) => m.actionType === 'Service').length;
+  const recallCount = serviceStationList.filter((m) => m.actionType === 'Recall').length;
+  const backupCount = assets.filter((a) => a.isBackupReady).length;
+  const availableCount = assets.filter((a) => a.status === 'Active' || a.status === 'AVAILABLE').length;
+
+  const recentRequests = [
+    ...serviceStationList.slice(0, 4).map((item) => ({
+      id: item.id,
+      asset: item.name,
+      issue: item.reason,
+      priority: item.priority || 'High',
+      date: item.sentDate,
+      type: item.actionType,
+    })),
+    ...serviceHistoryList.slice(0, 2).map((item) => ({
+      id: item.workOrder,
+      asset: item.equipment,
+      issue: item.serviceType,
+      priority: 'Normal',
+      date: item.date,
+      type: 'Completed',
+    })),
+  ].slice(0, 5);
+
   return (
-    <div className="p-8 flex flex-col gap-8 max-w-[1600px] mx-auto">
+    <div className="p-8 flex flex-col gap-8 max-w-[1600px] mx-auto animate-in fade-in duration-300 font-sans text-slate-800">
       {/* Header Banner */}
-      <div className="flex flex-col gap-1 border-b border-outline-variant/40 pb-5">
-        <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-widest">
-          <span className="material-symbols-outlined text-base">verified</span>
-          Clinical Operations Overview
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-6 gap-4">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+            <span className="material-symbols-outlined text-[14px]">verified</span>
+            Clinical Operations Overview
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 m-0">
+            Welcome back, {user?.full_name || 'Niranjan'}
+          </h1>
+          <p className="text-sm text-slate-500 m-0 font-medium">
+            Here's the real-time status of your medical equipment fleet and active service workflows.
+          </p>
         </div>
-        <h1 className="font-display-lg text-3xl font-extrabold text-on-background m-0">Good Morning, Dr. Priya</h1>
-        <p className="font-body-lg text-sm text-on-surface-variant m-0">
-          Equipment status, active service tracking, and department inventory health.
-        </p>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onNavigate('health-assessment')}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-lg">psychology</span>
+            Run Diagnostics
+          </button>
+        </div>
       </div>
 
       {/* Metrics Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* At Risk */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
         <div
           onClick={() => onNavigate('health-assessment')}
-          className="bg-error-container/80 p-5 rounded-2xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer border border-error-container group"
+          className="bg-white p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer border border-slate-100 group"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-xs font-bold text-on-error-container uppercase tracking-wider">At Risk</span>
-            <span className="material-symbols-outlined text-error group-hover:scale-110 transition-transform">warning</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">At Risk</span>
+            <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-red-500 text-sm group-hover:scale-110 transition-transform">warning</span>
+            </div>
           </div>
-          <span className="font-display-lg text-4xl font-extrabold text-on-error-container">8</span>
-          <span className="text-[10px] text-on-error-container font-semibold uppercase tracking-wider">Run Diagnostics →</span>
+          <div>
+            <span className="text-3xl font-semibold text-slate-800">{atRiskCount}</span>
+          </div>
         </div>
 
-        {/* Maintenance -> Redirects to Service Station */}
         <div
           onClick={() => onNavigate('service-station')}
-          className="bg-blue-100 p-5 rounded-2xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer border border-blue-300 group"
+          className="bg-white p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer border border-slate-100 group"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-xs font-bold text-blue-950 uppercase tracking-wider">Maintenance</span>
-            <span className="material-symbols-outlined text-blue-700 group-hover:scale-110 transition-transform">build</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">In Service</span>
+            <div className="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-sky-500 text-sm group-hover:scale-110 transition-transform">build</span>
+            </div>
           </div>
-          <span className="font-display-lg text-4xl font-extrabold text-blue-900">5</span>
-          <span className="text-[10px] text-blue-800 font-extrabold uppercase tracking-wider">View Service Station →</span>
+          <div>
+            <span className="text-3xl font-semibold text-slate-800">{maintenanceCount}</span>
+          </div>
         </div>
 
-        {/* Recall -> Redirects to Service Station */}
         <div
           onClick={() => onNavigate('service-station')}
-          className="bg-amber-100 p-5 rounded-2xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer border border-amber-300 group"
+          className="bg-white p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer border border-slate-100 group"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-xs font-bold text-amber-950 uppercase tracking-wider">Recall</span>
-            <span className="material-symbols-outlined text-amber-700 group-hover:scale-110 transition-transform">assignment_return</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Recall</span>
+            <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-amber-500 text-sm group-hover:scale-110 transition-transform">assignment_return</span>
+            </div>
           </div>
-          <span className="font-display-lg text-4xl font-extrabold text-amber-900">3</span>
-          <span className="text-[10px] text-amber-800 font-extrabold uppercase tracking-wider">View Recalls →</span>
+          <div>
+            <span className="text-3xl font-semibold text-slate-800">{recallCount}</span>
+          </div>
         </div>
 
-        {/* Backup -> Redirects to Hospital Equipment */}
         <div
           onClick={() => onNavigate('hospital-inventory')}
-          className="bg-emerald-50 p-5 rounded-2xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer border border-emerald-200 group"
+          className="bg-white p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer border border-slate-100 group"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-xs font-bold text-emerald-950 uppercase tracking-wider">Backup Ready</span>
-            <span className="material-symbols-outlined text-emerald-700 group-hover:scale-110 transition-transform">shield_with_heart</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Backup Ready</span>
+            <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-emerald-500 text-sm group-hover:scale-110 transition-transform">shield_with_heart</span>
+            </div>
           </div>
-          <span className="font-display-lg text-4xl font-extrabold text-emerald-800">184</span>
-          <span className="text-[10px] text-emerald-800 font-extrabold uppercase tracking-wider">Hospital Inventory →</span>
+          <div>
+            <span className="text-3xl font-semibold text-slate-800">{backupCount}</span>
+          </div>
         </div>
 
-        {/* Available -> Hospital Inventory */}
         <div
           onClick={() => onNavigate('hospital-inventory')}
-          className="bg-secondary-container/40 p-5 rounded-2xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer border border-secondary-container/40 group"
+          className="bg-white p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer border border-slate-100 group"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-xs font-bold text-on-secondary-container uppercase tracking-wider">Available</span>
-            <span className="material-symbols-outlined text-secondary group-hover:scale-110 transition-transform">check_circle</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Available Fleet</span>
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+              <span className="material-symbols-outlined text-blue-500 text-sm group-hover:scale-110 transition-transform">check_circle</span>
+            </div>
           </div>
-          <span className="font-display-lg text-4xl font-extrabold text-on-secondary-container">1,012</span>
-          <span className="text-[10px] text-secondary font-extrabold uppercase tracking-wider">Browse Active →</span>
+          <div>
+            <span className="text-3xl font-semibold text-slate-800">{availableCount}</span>
+          </div>
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Equipment Status Overview Table */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-8 flex flex-col gap-5">
           <div className="flex items-center justify-between">
-            <h2 className="font-headline-md text-xl font-extrabold text-on-background m-0">Equipment Status Overview</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 m-0">
+                Fleet Category Health Overview
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Monitor operational readiness and average telemetry index by department.
+              </p>
+            </div>
             <button
               onClick={() => onNavigate('hospital-inventory')}
-              className="text-xs font-bold text-primary hover:underline flex items-center gap-1 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/40"
+              className="text-[13px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-colors border border-transparent hover:border-slate-200"
             >
-              View Hospital Inventory <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              View Full Inventory →
             </button>
           </div>
 
-          <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <table className="w-full text-left border-collapse">
-              <thead className="bg-surface-container-low font-label-md text-xs text-on-surface-variant uppercase border-b border-outline-variant/50">
+              <thead className="bg-slate-50/50 text-[11px] text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100">
                 <tr>
-                  <th className="p-4 font-bold">Category</th>
-                  <th className="p-4 font-bold">Total</th>
-                  <th className="p-4 font-bold">Available</th>
-                  <th className="p-4 font-bold">Maintenance</th>
-                  <th className="p-4 font-bold">Avg Health</th>
+                  <th className="py-4 px-6">Category</th>
+                  <th className="py-4 px-4 text-center">Total</th>
+                  <th className="py-4 px-4 text-center">Available</th>
+                  <th className="py-4 px-4 text-center">In Service</th>
+                  <th className="py-4 px-6">Health Index</th>
                 </tr>
               </thead>
-              <tbody className="font-body-md text-sm text-on-background divide-y divide-outline-variant/30">
+              <tbody className="divide-y divide-slate-100 text-sm">
                 {filteredCategories.map((cat, i) => (
-                  <tr key={i} className="hover:bg-surface-container-low/50 transition-colors">
-                    <td className="p-4 font-bold text-primary">{cat.name}</td>
-                    <td className="p-4 font-medium">{cat.total}</td>
-                    <td className="p-4 text-emerald-700 font-bold">{cat.available}</td>
-                    <td className="p-4 text-error font-bold">{cat.maintenance}</td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 bg-surface-container-high h-2 rounded-full overflow-hidden">
-                          <div className="bg-primary h-full rounded-full" style={{ width: cat.health }} />
+                  <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${cat.color}`}>
+                          <span className="material-symbols-outlined text-xl">{cat.icon}</span>
                         </div>
-                        <span className="text-xs font-mono font-bold text-on-surface">{cat.health}</span>
+                        <div>
+                          <div className="font-semibold text-slate-900">{cat.name}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{cat.desc}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="py-4 px-4 text-center">
+                      <span className="font-medium text-slate-700">{cat.total}</span>
+                    </td>
+
+                    <td className="py-4 px-4 text-center">
+                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-medium text-[13px]">
+                        {cat.available}
+                      </span>
+                    </td>
+
+                    <td className="py-4 px-4 text-center">
+                      <span
+                        className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md font-medium text-[13px] ${
+                          cat.maintenance > 0
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-slate-50 text-slate-500'
+                        }`}
+                      >
+                        {cat.maintenance}
+                      </span>
+                    </td>
+
+                    <td className="py-4 px-6">
+                      <div className="flex flex-col gap-2 w-full max-w-[200px]">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-slate-600">
+                            {cat.health > 85 ? 'Optimal' : cat.health > 70 ? 'Normal' : 'Attention'}
+                          </span>
+                          <span className="font-semibold text-slate-900">{cat.healthStr}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              cat.health > 85
+                                ? 'bg-emerald-500'
+                                : cat.health > 70
+                                ? 'bg-sky-500'
+                                : 'bg-amber-500'
+                            }`}
+                            style={{ width: `${cat.health}%` }}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -148,52 +278,62 @@ export default function ClinicalDashboard({ onNavigate, searchQuery }) {
           </div>
         </div>
 
-        {/* Recent Service Activity Panel */}
-        <div className="flex flex-col gap-4">
+        <div className="lg:col-span-4 flex flex-col gap-5">
           <div className="flex items-center justify-between">
-            <h2 className="font-headline-md text-xl font-extrabold text-on-background m-0">Recent Service Activity</h2>
+            <h2 className="text-lg font-semibold text-slate-900 m-0">
+              Active Service Activity
+            </h2>
             <button
-              onClick={() => onNavigate('service-history')}
-              className="text-xs font-bold text-primary hover:underline"
+              onClick={() => onNavigate('service-station')}
+              className="text-[13px] font-medium text-sky-600 hover:text-sky-700 transition-colors"
             >
-              View Service History
+              View All ({serviceStationList.length})
             </button>
           </div>
 
-          <div className="bg-surface-container-lowest rounded-2xl p-5 shadow-sm border border-outline-variant flex flex-col gap-4">
-            {recentRequests.map((req) => (
-              <div
-                key={req.id}
-                onClick={() => onNavigate('service-history')}
-                className="p-4 rounded-xl bg-surface-container-low hover:bg-surface-container transition-all cursor-pointer border border-outline-variant/30 flex flex-col gap-2 group"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-mono font-bold text-primary">{req.id}</span>
-                  <span className="text-on-surface-variant font-medium">{req.date}</span>
-                </div>
-                <span className="font-bold text-on-surface text-sm group-hover:text-primary transition-colors">{req.asset}</span>
-                <p className="text-xs text-on-surface-variant line-clamp-2">{req.issue}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span
-                    className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider ${
-                      req.priority === 'High'
-                        ? 'bg-error-container text-on-error-container'
-                        : req.priority === 'Medium'
-                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                        : 'bg-blue-100 text-blue-900 border border-blue-300'
-                    }`}
-                  >
-                    {req.priority} Priority
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col gap-3">
+            {recentRequests.length > 0 ? (
+              recentRequests.map((req, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onNavigate('service-station')}
+                  className="p-4 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer border border-transparent hover:border-slate-100 flex flex-col gap-2 group"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-500">{req.id}</span>
+                    <span className="text-slate-400">{req.date}</span>
+                  </div>
+                  <span className="font-semibold text-slate-900 group-hover:text-sky-600 transition-colors text-[15px]">
+                    {req.asset}
                   </span>
-                  <span className="text-xs font-bold text-secondary flex items-center gap-0.5 group-hover:translate-x-1 transition-transform">
-                    Service Record <span className="material-symbols-outlined text-xs">chevron_right</span>
-                  </span>
+                  <p className="text-sm text-slate-500 line-clamp-1">{req.issue}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium tracking-wide ${
+                        req.type === 'Recall'
+                          ? 'bg-amber-50 text-amber-700'
+                          : req.type === 'Replaced'
+                          ? 'bg-purple-50 text-purple-700'
+                          : req.type === 'Completed'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}
+                    >
+                      {req.type || 'Service'}
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-0.5 group-hover:text-sky-600 transition-colors">
+                      Details <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-center py-8 text-sm text-slate-500 bg-slate-50/50 rounded-xl">No active service records.</div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

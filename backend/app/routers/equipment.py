@@ -79,7 +79,7 @@ def get_equipment_detail(equipment_id: int, db: Session = Depends(get_db), curre
 def create_equipment(
     req: EquipmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN, UserRole.MAINTENANCE_ENGINEER]))
+    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN, UserRole.MAINTENANCE_ENGINEER, UserRole.NURSE_DOCTOR]))
 ):
     existing = db.query(Equipment).filter(Equipment.machine_id == req.machine_id).first()
     if existing:
@@ -96,7 +96,7 @@ def update_equipment(
     equipment_id: int,
     req: EquipmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN, UserRole.MAINTENANCE_ENGINEER]))
+    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN, UserRole.MAINTENANCE_ENGINEER, UserRole.NURSE_DOCTOR]))
 ):
     equip = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equip:
@@ -114,9 +114,11 @@ def update_equipment(
 def delete_equipment(
     equipment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN]))
+    current_user: User = Depends(RoleChecker([UserRole.HOSPITAL_ADMIN, UserRole.MAINTENANCE_ENGINEER, UserRole.NURSE_DOCTOR]))
 ):
     equip = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+    if not equip:
+        equip = db.query(Equipment).filter(Equipment.machine_id == str(equipment_id)).first()
     if not equip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Equipment not found.")
     db.delete(equip)

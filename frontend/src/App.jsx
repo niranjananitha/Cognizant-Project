@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import LogServiceModal from './components/LogServiceModal';
 import AddEquipmentModal from './components/AddEquipmentModal';
+
+// Auth Pages
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
 
 // Nurse / Clinical Staff Pages
 import ClinicalDashboard from './pages/ClinicalDashboard';
@@ -16,28 +24,24 @@ import EquipmentServiceDetail from './pages/EquipmentServiceDetail';
 import AdministratorDashboard from './pages/admin/AdministratorDashboard';
 import AdminEquipmentOverview from './pages/admin/AdminEquipmentOverview';
 import AdminServiceRecordsHistory from './pages/admin/AdminServiceRecordsHistory';
-import AdminServiceRecordDetail from './pages/admin/AdminServiceRecordDetail';
 import AdminRecallMonitoring from './pages/admin/AdminRecallMonitoring';
 
-function App() {
+const DashboardLayout = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
-  const [userRole, setUserRole] = useState('admin'); // Roles: 'nurse', 'admin'
   const [isLogServiceOpen, setIsLogServiceOpen] = useState(false);
   const [isAddEquipmentOpen, setIsAddEquipmentOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
-
   const [selectedAdminDetail, setSelectedAdminDetail] = useState(null);
+
+  // We map backend roles to our frontend view states
+  // Assuming HOSPITAL_ADMIN is admin, and others are clinical
+  const viewRole = user?.role === 'HOSPITAL_ADMIN' ? 'admin' : 'nurse';
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleRoleChange = (newRole) => {
-    setUserRole(newRole);
-    setActiveTab('dashboard'); // Reset tab to default dashboard for new role
-    setSelectedAdminDetail(null);
   };
 
   const handleViewAdminDetail = (record) => {
@@ -54,8 +58,7 @@ function App() {
   };
 
   const renderActivePage = () => {
-    // Hospital Administrator Role
-    if (userRole === 'admin') {
+    if (viewRole === 'admin') {
       switch (activeTab) {
         case 'dashboard':
           return <AdministratorDashboard onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} />;
@@ -70,7 +73,12 @@ function App() {
             />
           );
         case 'service-detail':
-          return <AdminServiceRecordDetail onNavigate={(tab) => setActiveTab(tab)} record={selectedAdminDetail} />;
+          return (
+            <EquipmentServiceDetail
+              onNavigate={(tab) => setActiveTab(tab)}
+              selectedRecord={selectedAdminDetail}
+            />
+          );
         case 'recall-monitoring':
           return <AdminRecallMonitoring />;
         default:
@@ -78,22 +86,22 @@ function App() {
       }
     }
 
-    // Clinical Nurse Role
+    // Clinical / Engineer Role
     switch (activeTab) {
       case 'dashboard':
-        return <ClinicalDashboard onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={userRole} />;
+        return <ClinicalDashboard onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={viewRole} />;
       case 'service-station':
       case 'equipment':
-        return <ServiceStation onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={userRole} />;
+        return <ServiceStation onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={viewRole} />;
       case 'health-assessment':
-        return <EquipmentHealthAssessment onNavigate={(tab) => setActiveTab(tab)} currentUserRole={userRole} />;
+        return <EquipmentHealthAssessment onNavigate={(tab) => setActiveTab(tab)} currentUserRole={viewRole} />;
       case 'hospital-inventory':
         return (
           <HospitalEquipmentInventory
             onNavigate={(tab) => setActiveTab(tab)}
             onAddClick={() => setIsAddEquipmentOpen(true)}
             searchQuery={searchQuery}
-            currentUserRole={userRole}
+            currentUserRole={viewRole}
           />
         );
       case 'service-history':
@@ -111,14 +119,14 @@ function App() {
           />
         );
       default:
-        return <ClinicalDashboard onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={userRole} />;
+        return <ClinicalDashboard onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={viewRole} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-background text-on-background flex">
       {/* Navigation Sidebar */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userRole={userRole} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userRole={viewRole} />
 
       {/* Main Container */}
       <div className="pl-72 flex-1 flex flex-col min-h-screen">
@@ -126,8 +134,9 @@ function App() {
         <Header
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          userRole={userRole}
-          setUserRole={handleRoleChange}
+          userRole={viewRole}
+        // setUserRole prop is intentionally ignored or can be removed in Header.jsx 
+        // because role is now strictly from the backend user object
         />
 
         {/* Page Content */}
@@ -157,6 +166,33 @@ function App() {
         </div>
       )}
     </div>
+  );
+};
+
+function App() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
 

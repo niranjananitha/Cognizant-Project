@@ -1,6 +1,10 @@
 import React from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import logo from '../assets/logo.png';
 
 export default function Sidebar({ activeTab, setActiveTab, userRole }) {
+  const { user } = useAuth();
+
   const nurseNavItems = [
     { id: 'dashboard', label: 'Clinical Dashboard', icon: 'dashboard' },
     { id: 'service-station', label: 'Service Station', icon: 'build_circle' },
@@ -18,23 +22,25 @@ export default function Sidebar({ activeTab, setActiveTab, userRole }) {
 
   const navItems = userRole === 'admin' ? adminNavItems : nurseNavItems;
 
-  const profiles = {
-    nurse: { name: 'Dr. Priya', role: 'Clinical Staff Lead', avatar: 'clinical_notes' },
-    admin: { name: 'Dr. Sarah Chen', role: 'Hospital Administrator', avatar: 'admin_panel_settings' },
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'HOSPITAL_ADMIN': return 'Hospital Administrator';
+      case 'MAINTENANCE_ENGINEER': return 'Maintenance Engineer';
+      case 'NURSE_DOCTOR': return 'Clinical Staff';
+      default: return 'User';
+    }
   };
-
-  const currentProfile = profiles[userRole] || profiles.nurse;
 
   return (
     <aside className="fixed left-0 top-0 h-full w-72 z-50 flex flex-col border-r border-outline-variant bg-gradient-to-b from-primary-container via-[#0c4063] to-secondary-container text-on-primary shadow-xl">
       {/* Brand Header */}
       <div className="px-6 py-6 flex items-center gap-3 border-b border-white/10">
-        <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/20 shadow-inner">
-          <span className="material-symbols-outlined text-white text-2xl">medical_services</span>
+        <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center p-1 shadow-md">
+          <img src={logo} alt="MedEquip Logo" className="w-full h-full object-contain" />
         </div>
         <div className="flex flex-col">
-          <span className="font-headline-sm text-xl font-extrabold text-white tracking-wide">MedEquip</span>
-          <span className="text-[10px] text-secondary-fixed-dim uppercase tracking-widest font-semibold">
+          <span className="font-headline-sm text-xl font-extrabold text-white tracking-wide leading-tight">MedEquip</span>
+          <span className="text-[10px] text-white/70 uppercase tracking-widest font-semibold leading-tight mt-0.5">
             {userRole === 'admin' ? 'Admin Portal' : 'Clinical Portal'}
           </span>
         </div>
@@ -65,14 +71,20 @@ export default function Sidebar({ activeTab, setActiveTab, userRole }) {
       </nav>
 
       {/* Dynamic Active User Profile Footer */}
-      <div className="p-4 border-t border-white/10 bg-black/10">
-        <div className="flex items-center gap-3 p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/15">
-          <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-primary font-bold shadow-md">
-            <span className="material-symbols-outlined text-xl">{currentProfile.avatar}</span>
+      <div className="p-4 border-t border-white/10 bg-slate-900/30">
+        <div className="flex items-center gap-3 p-3 bg-slate-900/40 backdrop-blur-md rounded-xl border border-white/10">
+          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold shadow-sm border border-white/20">
+            <span className="material-symbols-outlined text-xl">
+              {userRole === 'admin' ? 'admin_panel_settings' : 'clinical_notes'}
+            </span>
           </div>
           <div className="flex flex-col overflow-hidden">
-            <span className="font-label-md text-sm font-bold text-white truncate">{currentProfile.name}</span>
-            <span className="font-label-sm text-[11px] text-secondary-fixed-dim font-medium truncate">{currentProfile.role}</span>
+            <span className="font-label-md text-sm font-bold text-white truncate">
+              {user?.full_name || 'Loading...'}
+            </span>
+            <span className="font-label-sm text-[11px] text-white/70 font-medium truncate">
+              {getRoleLabel(user?.role)}
+            </span>
           </div>
         </div>
       </div>

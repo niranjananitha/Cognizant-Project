@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function Header({ searchQuery, setSearchQuery, userRole, setUserRole }) {
+export default function Header({ searchQuery, setSearchQuery }) {
+  const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(3);
   const [showNotifications, setShowNotifications] = useState(false);
-
-  const roles = [
-    { id: 'nurse', label: 'Dr. Priya (Nurse / Clinical Staff)', icon: 'clinical_notes' },
-    { id: 'admin', label: 'Dr. Sarah Chen (Hospital Administrator)', icon: 'admin_panel_settings' },
-  ];
 
   const notifications = [
     { id: 1, title: 'Recall Alert: Respironics V60 Ventilator', time: '10m ago', type: 'critical' },
     { id: 2, title: 'Quarterly Maintenance Audit Ready', time: '1h ago', type: 'info' },
     { id: 3, title: 'Capital Asset Purchase Approved: MRI-102', time: '3h ago', type: 'success' },
   ];
-
-  const currentRoleObj = roles.find((r) => r.id === userRole) || roles[0];
 
   return (
     <header className="fixed top-0 left-72 right-0 h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant z-40 flex items-center justify-between px-8">
@@ -36,24 +31,8 @@ export default function Header({ searchQuery, setSearchQuery, userRole, setUserR
         )}
       </div>
 
-      {/* Role Switcher & Header Actions */}
+      {/* User Profile & Header Actions */}
       <div className="flex items-center gap-4">
-        {/* Active Role Selector Dropdown */}
-        <div className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/60 px-3.5 py-1.5 rounded-full shadow-sm">
-          <span className="material-symbols-outlined text-primary text-lg">person_pin</span>
-          <select
-            value={userRole}
-            onChange={(e) => setUserRole(e.target.value)}
-            className="bg-transparent font-bold text-xs text-on-surface outline-none cursor-pointer"
-          >
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                Role: {r.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Notification Bell Menu */}
         <div className="relative">
           <button
@@ -88,6 +67,30 @@ export default function Header({ searchQuery, setSearchQuery, userRole, setUserR
               </div>
             </div>
           )}
+        </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={logout}
+          className="p-2.5 text-error hover:bg-error-container rounded-full transition-all"
+          title="Logout"
+        >
+          <span className="material-symbols-outlined">logout</span>
+        </button>
+
+        {/* User Info */}
+        <div className="flex items-center gap-3 bg-surface-container-low border border-outline-variant/60 px-4 py-1.5 rounded-full shadow-sm ml-2">
+          <div className="bg-primary text-on-primary w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+            {user?.full_name?.charAt(0).toUpperCase() || 'U'}
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold text-xs text-on-surface leading-tight">
+              {user?.full_name}
+            </span>
+            <span className="text-[10px] text-on-surface-variant leading-tight">
+              {user?.role?.replace('_', ' ')}
+            </span>
+          </div>
         </div>
       </div>
     </header>
