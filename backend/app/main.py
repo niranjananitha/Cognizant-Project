@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.database.session import engine
 from app.database.base import Base
@@ -38,6 +40,14 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"❌ Validation Error for {request.method} {request.url.path}: {exc.errors()} | Body: {exc.body}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()}
+    )
 
 # CORS Middleware
 app.add_middleware(
@@ -76,6 +86,7 @@ def root():
 # Legacy Compatibility Endpoint (POST /api/predict)
 @app.post("/api/predict")
 def legacy_ml_predict(req: dict):
+    logger.info(f"Incoming predict payload: {req}")
     try:
         result = ml_service.predict_health(
             machine_name=req.get("machine_name", "Respironics V60 Ventilator"),

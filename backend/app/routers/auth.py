@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.session import get_db
@@ -6,6 +7,8 @@ from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, RegisterRequest
 from app.schemas.user import UserOut
 from app.dependencies.auth import get_current_user
+
+logger = logging.getLogger("medequip")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -31,7 +34,15 @@ def register_user(req: RegisterRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login_user(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email).first()
-    if not user or not verify_password(req.password, user.password_hash):
+    if not user:
+        logger.warning(f"⚠️ Failed login attempt: Email '{req.email}' not found in database.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not verify_password(req.password, user.password_hash):
+        logger.warning(f"⚠️ Failed login attempt: Password mismatch for email '{req.email}'.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password.",

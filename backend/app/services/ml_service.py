@@ -104,15 +104,16 @@ class MLService:
                 is_fail = prob_failure > 50.0
 
                 recommended_fix = "Routine PM inspection & verification"
-                if is_fail and self.fix_preprocessor and self.label_encoder_fix:
-                    try:
-                        fix_features = self.fix_preprocessor.transform(input_df)
-                        fix_code = self.xgb_model.predict(fix_features)[0] if hasattr(self.xgb_model, 'fix_model') else 0
-                        recommended_fix = str(self.label_encoder_fix.inverse_transform([fix_code])[0])
-                    except Exception:
+                if is_fail:
+                    if hasattr(self.xgb_model, 'fix_model') and self.fix_preprocessor and self.label_encoder_fix:
+                        try:
+                            fix_features = self.fix_preprocessor.transform(input_df)
+                            fix_code = self.xgb_model.fix_model.predict(fix_features)[0]
+                            recommended_fix = str(self.label_encoder_fix.inverse_transform([fix_code])[0])
+                        except Exception:
+                            recommended_fix = self._rule_based_fix(temp_c, battery_voltage_v, system_error_code, downtime_hours)
+                    else:
                         recommended_fix = self._rule_based_fix(temp_c, battery_voltage_v, system_error_code, downtime_hours)
-                elif is_fail:
-                    recommended_fix = self._rule_based_fix(temp_c, battery_voltage_v, system_error_code, downtime_hours)
 
                 risk_level = "CRITICAL" if prob_failure > 70 else ("HIGH" if prob_failure > 50 else ("MEDIUM" if prob_failure > 30 else "LOW"))
 

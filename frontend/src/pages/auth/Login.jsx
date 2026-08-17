@@ -185,7 +185,7 @@ const Login = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => handleQuickLogin('nurse@medequip.com', 'Password123!')}
+                  onClick={() => handleQuickLogin('nurse@medequip.com', 'NursePass123!')}
                   className="p-3 rounded-xl bg-sky-50/50 hover:bg-sky-50 border border-sky-100 text-left transition-all group flex items-center gap-3"
                 >
                   <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0">
@@ -199,7 +199,7 @@ const Login = () => {
 
                 <button
                   type="button"
-                  onClick={() => handleQuickLogin('admin@medequip.com', 'Password123!')}
+                  onClick={() => handleQuickLogin('admin@medequip.com', 'AdminPass123!')}
                   className="p-3 rounded-xl bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100 text-left transition-all group flex items-center gap-3"
                 >
                   <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
