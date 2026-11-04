@@ -1,0 +1,30 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+
+# ---- Local databases (recreate with: python scripts/seed_database.py) ----
+*.db
+*.sqlite3
+
+# ---- Node / frontend (see also frontend/.gitignore) ----
+node_modules/
+dist/
+
+# ---- Claude Code local settings (per-machine) ----
+.claude/settings.local.json
+CLAUDE.local.md
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
