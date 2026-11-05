@@ -4,7 +4,7 @@ import pytest
 from app.core.security import get_password_hash
 from app.models.knowledge import KnowledgeChunk
 from app.models.user import User, UserRole
-from rag_fixtures import V60_MANUAL, login, make_pdf, upload
+from rag_fixtures import V60_MANUAL, encrypt_pdf, login, make_pdf, upload
 
 
 @pytest.fixture
@@ -58,6 +58,23 @@ def test_upload_without_text_is_marked_failed(client, admin):
     assert res.status_code == 201
     assert res.json()["status"] == "FAILED"
     assert "No extractable text" in res.json()["processing_error"]
+
+
+def test_restricted_pdf_manual_upload_is_processed(client, admin):
+    # Opens without a password (encrypted only to restrict editing/printing).
+    pdf = encrypt_pdf(make_pdf(V60_MANUAL.split("\f")), user_password="")
+    res = upload(client, admin, content=pdf, filename="v60.pdf")
+    assert res.status_code == 201, res.text
+    assert res.json()["status"] == "READY"
+    assert res.json()["page_count"] == 3
+
+
+def test_password_protected_pdf_upload_is_marked_failed(client, admin):
+    pdf = encrypt_pdf(make_pdf(V60_MANUAL.split("\f")), user_password="open-me")
+    res = upload(client, admin, content=pdf, filename="v60.pdf")
+    assert res.status_code == 201, res.text
+    assert res.json()["status"] == "FAILED"
+    assert "needs a password" in res.json()["processing_error"]
 
 
 def test_upload_validation(client, admin):

@@ -47,21 +47,30 @@ def extract_pages(filename: str, data: bytes) -> List[PageText]:
 
 def _extract_pdf(data: bytes) -> List[PageText]:
     try:
-        from pypdf import PdfReader
-        from pypdf.errors import PdfReadError
+        from pypdf import PasswordType, PdfReader
+        from pypdf.errors import DependencyError, PdfReadError
     except ImportError as exc:  # pragma: no cover - dependency is in requirements.txt
         raise DocumentProcessingError("PDF support is not installed (pypdf).") from exc
 
     try:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
-            raise DocumentProcessingError("Encrypted PDFs are not supported. Upload an unprotected copy.")
+            # Manufacturer manuals are often encrypted only to restrict editing/printing and
+            # open in any PDF viewer without a password. Try that empty password, as viewers do.
+            if reader.decrypt("") == PasswordType.NOT_DECRYPTED:
+                raise DocumentProcessingError(
+                    "This PDF needs a password to open. Open it with its password, save an "
+                    "unprotected copy, and upload that copy.")
         pages = []
         for idx, page in enumerate(reader.pages, start=1):
             pages.append(PageText(page_number=idx, text=page.extract_text() or ""))
         return pages
     except DocumentProcessingError:
         raise
+    except (NotImplementedError, DependencyError) as exc:
+        # e.g. certificate/DRM protection pypdf cannot open
+        raise DocumentProcessingError(
+            f"This PDF uses protection that cannot be read ({exc}). Upload an unprotected copy.") from exc
     except (PdfReadError, ValueError, KeyError, TypeError) as exc:
         raise DocumentProcessingError(f"The PDF could not be read: {exc}") from exc
 

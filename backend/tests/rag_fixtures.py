@@ -83,6 +83,18 @@ def make_pdf(pages: List[str]) -> bytes:
     return out.getvalue()
 
 
+def encrypt_pdf(pdf: bytes, user_password: str, algorithm: str = "AES-256") -> bytes:
+    """Encrypt a PDF. user_password="" gives a restricted PDF that opens without a password
+    (common for manufacturer manuals); a non-empty one requires that password to open."""
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(pdf)))
+    writer.encrypt(user_password=user_password, owner_password="owner-secret", algorithm=algorithm)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def login(client, email: str, password: str) -> dict:
     res = client.post("/api/auth/login", json={"email": email, "password": password})
     assert res.status_code == 200, res.text

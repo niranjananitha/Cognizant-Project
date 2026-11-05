@@ -7,7 +7,7 @@ from app.rag.document_processor import (
 from app.rag.error_codes import chunk_contains_code, extract_error_codes, normalize_error_code
 from app.rag.nurse_assistant import _extract_list_items
 from app.rag.safety import check_step_safety, is_safety_critical
-from rag_fixtures import V60_MANUAL, make_pdf
+from rag_fixtures import V60_MANUAL, encrypt_pdf, make_pdf
 
 
 def test_pdf_text_extraction_preserves_pages():
@@ -27,6 +27,40 @@ def test_txt_form_feed_marks_pages():
 def test_unsupported_file_type_rejected():
     with pytest.raises(DocumentProcessingError):
         extract_pages("manual.docx", b"data")
+
+
+def _encrypted_pdf(user_password: str, algorithm: str = "AES-256") -> bytes:
+    return encrypt_pdf(make_pdf(V60_MANUAL.split("\f")), user_password, algorithm)
+
+
+@pytest.mark.parametrize("algorithm", ["AES-256", "RC4-128"])
+def test_restricted_pdf_that_opens_without_password_is_processed(algorithm):
+    # Manufacturer manuals are often encrypted only to restrict editing/printing:
+    # they open in any PDF viewer without a password, so they must be indexed.
+    plain = process_document("manual.pdf", make_pdf(V60_MANUAL.split("\f")), 900, 150)
+    doc = process_document("manual.pdf", _encrypted_pdf(user_password="", algorithm=algorithm), 900, 150)
+    assert doc.page_count == 3
+    assert [(c.page_number, c.content, c.error_codes) for c in doc.chunks] == \
+        [(c.page_number, c.content, c.error_codes) for c in plain.chunks]
+    assert any(" E5 " in (c.error_codes or "") for c in doc.chunks)  # codes stored normalised: E05 -> E5
+
+
+def test_password_protected_pdf_is_rejected_with_clear_message():
+    with pytest.raises(DocumentProcessingError, match="password"):
+        extract_pages("manual.pdf", _encrypted_pdf(user_password="open-me"))
+
+
+def test_unsupported_pdf_protection_fails_cleanly(monkeypatch):
+    # Certificate/DRM-protected PDFs make pypdf raise NotImplementedError; the upload
+    # must be marked FAILED with a message, not crash with a server error.
+    import pypdf
+
+    def unsupported(*args, **kwargs):
+        raise NotImplementedError("/SubFilter NOT supported")
+
+    monkeypatch.setattr(pypdf, "PdfReader", unsupported)
+    with pytest.raises(DocumentProcessingError, match="protection"):
+        extract_pages("manual.pdf", b"%PDF-1.4")
 
 
 def test_image_only_document_fails_processing():
