@@ -22,6 +22,7 @@ class UserUpdate(BaseModel):
 
 class UserOut(UserBase):
     id: int
+    hospital_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -25,6 +25,10 @@ import AdministratorDashboard from './pages/admin/AdministratorDashboard';
 import AdminEquipmentOverview from './pages/admin/AdminEquipmentOverview';
 import AdminServiceRecordsHistory from './pages/admin/AdminServiceRecordsHistory';
 import AdminRecallMonitoring from './pages/admin/AdminRecallMonitoring';
+import KnowledgeBaseManager from './pages/admin/KnowledgeBaseManager';
+
+// Equipment Assistance (RAG chatbot)
+import EquipmentAssistance from './pages/EquipmentAssistance';
 
 const DashboardLayout = () => {
   const { user } = useAuth();
@@ -79,6 +83,8 @@ const DashboardLayout = () => {
               selectedRecord={selectedAdminDetail}
             />
           );
+        case 'knowledge-base':
+          return <KnowledgeBaseManager />;
         case 'recall-monitoring':
           return <AdminRecallMonitoring />;
         default:
@@ -93,6 +99,8 @@ const DashboardLayout = () => {
       case 'service-station':
       case 'equipment':
         return <ServiceStation onNavigate={(tab) => setActiveTab(tab)} searchQuery={searchQuery} currentUserRole={viewRole} />;
+      case 'equipment-assistance':
+        return <EquipmentAssistance />;
       case 'health-assessment':
         return <EquipmentHealthAssessment onNavigate={(tab) => setActiveTab(tab)} currentUserRole={viewRole} />;
       case 'hospital-inventory':

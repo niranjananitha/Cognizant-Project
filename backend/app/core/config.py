@@ -1,6 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "MedEquip Operations & ML Platform"
@@ -34,6 +34,25 @@ class Settings(BaseSettings):
     
     # ML Models Path
     ML_MODELS_DIR: str = "mlmodels"
+
+    # Multi-hospital isolation (users without an explicit hospital belong here)
+    DEFAULT_HOSPITAL_ID: str = "HOSP-001"
+
+    # NVIDIA NIM GenAI for the Nurse Equipment Assistance chatbot (https://build.nvidia.com).
+    # Credentials come ONLY from the environment / .env file.
+    # Leave NVIDIA_API_KEY empty to run the assistant in retrieval-only mode.
+    NVIDIA_API_KEY: Optional[str] = None
+    NVIDIA_API_URL: str = "https://integrate.api.nvidia.com/v1/chat/completions"
+    NVIDIA_MODEL: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+    NVIDIA_TIMEOUT_SECONDS: float = 90.0   # large reasoning model; allow extra time
+    NVIDIA_MAX_TOKENS: int = 4096
+
+    # RAG / Knowledge Base
+    RAG_CHUNK_SIZE: int = 900          # characters per chunk
+    RAG_CHUNK_OVERLAP: int = 150       # characters carried into the next chunk
+    RAG_TOP_K: int = 5
+    RAG_MIN_RELEVANCE: float = 0.08    # cosine similarity floor (TF-IDF is lexical)
+    KNOWLEDGE_MAX_UPLOAD_MB: int = 20
 
     class Config:
         env_file = ".env"

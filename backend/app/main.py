@@ -8,12 +8,14 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.database.session import engine
 from app.database.base import Base
+from app.database.schema_upgrade import apply_additive_upgrades
 from app.services.ml_service import ml_service
 
 from app.routers import (
     auth, users, equipment, health, predictions,
     service_requests, maintenance, spare_parts, recalls,
-    replacements, dashboards, notifications, reports
+    replacements, dashboards, notifications, reports,
+    knowledge, rag
 )
 from app.schemas.health import HealthReadingCreate
 from app.schemas.prediction import HealthAssessmentResponse
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting MedEquip Operations & ML Platform Backend...")
     try:
         Base.metadata.create_all(bind=engine)
+        apply_additive_upgrades(engine)
         logger.info("✅ Database tables verified/created successfully.")
     except Exception as e:
         logger.warning(f"⚠️ Could not create tables automatically: {e}")
@@ -73,6 +76,8 @@ app.include_router(replacements.router, prefix=settings.API_V1_STR)
 app.include_router(dashboards.router, prefix=settings.API_V1_STR)
 app.include_router(notifications.router, prefix=settings.API_V1_STR)
 app.include_router(reports.router, prefix=settings.API_V1_STR)
+app.include_router(knowledge.router, prefix=settings.API_V1_STR)
+app.include_router(rag.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

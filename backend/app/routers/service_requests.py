@@ -10,12 +10,76 @@ from app.models.service_request import ServiceRequest, ServiceStatus, ServicePri
 from app.models.maintenance import MaintenanceService
 from app.models.audit_log import AuditLog
 from app.models.user import User, UserRole
+from app.models.service_escalation import ServiceEscalation
+from app.models.chat import ChatConversation, ChatMessage, ChatRole
+from app.rag.safety import is_life_support_category, is_safety_critical
 from app.schemas.service_request import (
-    ServiceRequestOut, ServiceRequestCreate, ServiceRequestUpdate, PaginatedServiceRequestOut
+    ServiceRequestOut, ServiceRequestCreate, ServiceRequestUpdate, PaginatedServiceRequestOut,
+    EscalationCreate,
 )
 from app.dependencies.auth import get_current_user, RoleChecker
 
 router = APIRouter(prefix="/service-requests", tags=["Service Requests"])
+
+_PRIORITY_ORDER = [ServicePriority.LOW, ServicePriority.MEDIUM, ServicePriority.HIGH, ServicePriority.CRITICAL]
+
+
+def _get_sr(db: Session, id: int, user: User) -> ServiceRequest:
+    """Load a ticket; chatbot escalations are only visible inside their own hospital."""
+    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
+    if not sr or (sr.escalation is not None and sr.escalation.hospital_id != user.hospital_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    return sr
+
+
+def _max_priority(*priorities: ServicePriority) -> ServicePriority:
+    return max(priorities, key=_PRIORITY_ORDER.index)
+
+
+def _build_escalation(db: Session, esc: EscalationCreate, equip: Equipment, user: User, issue: str) -> ServiceEscalation:
+    """Capture troubleshooting context. Manual references and the identified issue are
+    taken from the server-side chat record, not trusted from the client."""
+    conv = None
+    references, identified, answer_urgent = [], esc.identified_issue, False
+    if esc.conversation_id is not None:
+        conv = db.query(ChatConversation).filter(
+            ChatConversation.id == esc.conversation_id,
+            ChatConversation.user_id == user.id,
+            ChatConversation.hospital_id == user.hospital_id,
+        ).first()
+        if not conv:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+        last = (db.query(ChatMessage)
+                .filter(ChatMessage.conversation_id == conv.id, ChatMessage.role == ChatRole.ASSISTANT)
+                .order_by(ChatMessage.id.desc()).first())
+        if last is not None:
+            answer = last.response_json or {}
+            references = [{
+                "document_id": s.document_id, "document_title": s.document_title,
+                "version": s.document_version, "page_number": s.page_number,
+                "section_heading": s.section_heading,
+            } for s in last.sources]
+            ident = answer.get("error_identification") or {}
+            identified = identified or ident.get("description") or answer.get("summary")
+            answer_urgent = (answer.get("escalation") or {}).get("urgency") == "URGENT"
+
+    critical = (esc.patient_safety_concern or answer_urgent
+                or is_safety_critical(esc.nurse_description, issue, identified))
+    return ServiceEscalation(
+        hospital_id=user.hospital_id,
+        conversation_id=conv.id if conv else None,
+        department=equip.department or user.department,
+        equipment_category=(conv.equipment_category if conv and conv.equipment_category else equip.category),
+        manufacturer=(conv.manufacturer if conv and conv.manufacturer else equip.manufacturer),
+        equipment_model=(conv.equipment_model if conv and conv.equipment_model else equip.model),
+        error_code=esc.error_code,
+        nurse_description=esc.nurse_description.strip(),
+        identified_issue=identified,
+        troubleshooting_attempted=[s.strip()[:500] for s in esc.troubleshooting_attempted if s and s.strip()],
+        troubleshooting_outcome=esc.troubleshooting_outcome,
+        manual_references=references,
+        safety_critical=critical,
+    )
 
 def generate_ticket_number(db: Session) -> str:
     count = db.query(ServiceRequest).count() + 1
@@ -29,10 +93,20 @@ def list_service_requests(
     priority: Optional[ServicePriority] = None,
     equipment_id: Optional[int] = None,
     assigned_engineer_id: Optional[int] = None,
+    raised_by_me: bool = False,
+    source: Optional[str] = Query(None, pattern="^CHATBOT$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(ServiceRequest)
+    query = db.query(ServiceRequest).outerjoin(
+        ServiceEscalation, ServiceEscalation.service_request_id == ServiceRequest.id)
+    # Hospital isolation for chatbot escalations
+    query = query.filter(
+        (ServiceEscalation.id.is_(None)) | (ServiceEscalation.hospital_id == current_user.hospital_id))
+    if source == "CHATBOT":
+        query = query.filter(ServiceEscalation.id.is_not(None))
+    if raised_by_me:
+        query = query.filter(ServiceRequest.raised_by_id == current_user.id)
 
     if status:
         query = query.filter(ServiceRequest.status == status)
@@ -61,9 +135,7 @@ def list_service_requests(
 
 @router.get("/{id}", response_model=ServiceRequestOut)
 def get_service_request_detail(id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
     return sr
 
 @router.post("", response_model=ServiceRequestOut, status_code=status.HTTP_201_CREATED)
@@ -78,11 +150,20 @@ def raise_service_request(
 
     ticket = generate_ticket_number(db)
 
+    priority = req.priority
+    escalation = None
+    if req.escalation is not None:
+        escalation = _build_escalation(db, req.escalation, equip, current_user, req.issue)
+        floor = ServicePriority.HIGH if is_life_support_category(escalation.equipment_category) else ServicePriority.MEDIUM
+        priority = _max_priority(priority, floor)
+        if escalation.safety_critical:
+            priority = ServicePriority.CRITICAL
+
     sr = ServiceRequest(
         ticket_number=ticket,
         equipment_id=equip.id,
         raised_by_id=current_user.id,
-        priority=req.priority,
+        priority=priority,
         issue=req.issue,
         observed_symptoms=req.observed_symptoms,
         additional_observation=req.additional_observation,
@@ -91,17 +172,21 @@ def raise_service_request(
     )
     
     # Update equipment status to UNDER_MAINTENANCE if HIGH/CRITICAL priority
-    if req.priority in [ServicePriority.HIGH, ServicePriority.CRITICAL]:
+    if priority in [ServicePriority.HIGH, ServicePriority.CRITICAL]:
         equip.status = EquipmentStatus.UNDER_MAINTENANCE
 
     db.add(sr)
-    
+    if escalation is not None:
+        sr.escalation = escalation
+
     # Log Audit
     audit = AuditLog(
         user_id=current_user.id,
-        action="SERVICE_REQUEST_CREATED",
+        action="SERVICE_REQUEST_ESCALATED_FROM_CHATBOT" if escalation is not None else "SERVICE_REQUEST_CREATED",
         entity_type="SERVICE_REQUEST",
-        new_value={"ticket_number": ticket, "issue": req.issue, "priority": req.priority.value}
+        new_value={"ticket_number": ticket, "issue": req.issue, "priority": priority.value,
+                   **({"error_code": escalation.error_code, "safety_critical": escalation.safety_critical,
+                       "hospital_id": escalation.hospital_id} if escalation is not None else {})}
     )
     db.add(audit)
     
@@ -116,9 +201,7 @@ def update_service_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER, UserRole.HOSPITAL_ADMIN]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     update_data = req.model_dump(exclude_unset=True)
     for key, val in update_data.items():
@@ -134,9 +217,7 @@ def acknowledge_service_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.ACKNOWLEDGED
     sr.assigned_engineer_id = current_user.id
@@ -150,9 +231,7 @@ def start_diagnosis(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.IN_DIAGNOSIS
     sr.assigned_engineer_id = current_user.id
@@ -166,9 +245,7 @@ def start_service(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.IN_SERVICE
     sr.assigned_engineer_id = current_user.id
@@ -187,9 +264,7 @@ def mark_waiting_for_parts(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.WAITING_FOR_PARTS
     db.commit()
@@ -202,9 +277,7 @@ def mark_service_delayed(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.SERVICE_DELAYED
     db.commit()
@@ -217,9 +290,7 @@ def complete_service_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.COMPLETED
 
@@ -249,11 +320,33 @@ def reject_service_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(RoleChecker([UserRole.MAINTENANCE_ENGINEER, UserRole.HOSPITAL_ADMIN]))
 ):
-    sr = db.query(ServiceRequest).filter(ServiceRequest.id == id).first()
-    if not sr:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service request not found.")
+    sr = _get_sr(db, id, current_user)
 
     sr.status = ServiceStatus.REJECTED
+    db.commit()
+    db.refresh(sr)
+    return sr
+
+
+@router.post("/{id}/verify", response_model=ServiceRequestOut)
+def verify_resolution(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RoleChecker([UserRole.NURSE_DOCTOR, UserRole.HOSPITAL_ADMIN]))
+):
+    """Clinical staff confirm a resolved chatbot escalation works as expected (RESOLVED -> VERIFIED)."""
+    sr = _get_sr(db, id, current_user)
+    if sr.escalation is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only chatbot escalations use verification.")
+    if current_user.role == UserRole.NURSE_DOCTOR and sr.raised_by_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the staff member who raised this request can verify it.")
+    if sr.status != ServiceStatus.COMPLETED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The request must be resolved by Biomedical Engineering before verification.")
+    if sr.escalation.verified_at is None:
+        sr.escalation.verified_at = datetime.now(timezone.utc)
+        sr.escalation.verified_by_id = current_user.id
+        db.add(AuditLog(user_id=current_user.id, action="SERVICE_REQUEST_VERIFIED", entity_type="SERVICE_REQUEST",
+                        entity_id=sr.id, new_value={"ticket_number": sr.ticket_number}))
     db.commit()
     db.refresh(sr)
     return sr

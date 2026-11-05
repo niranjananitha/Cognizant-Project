@@ -8,6 +8,7 @@ from app.database.base import Base
 from app.database.session import get_db
 from app.core.security import get_password_hash
 from app.models.user import User, UserRole
+from app.services.llm_service import LLMService, get_llm_service
 
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_medequip.db"
 
@@ -16,6 +17,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
+    # Start from a clean schema so new columns/tables are always present.
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -56,6 +59,8 @@ def client(db_session):
             pass
             
     app.dependency_overrides[get_db] = override_get_db
+    # Never call the real NVIDIA API from tests: default to an unconfigured client.
+    app.dependency_overrides[get_llm_service] = lambda: LLMService(api_key="")
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

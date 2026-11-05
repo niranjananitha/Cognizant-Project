@@ -12,6 +12,9 @@ from app.models.warranty import Warranty, WarrantyType
 from app.models.invoice import Invoice
 from app.models.notification import Notification
 from app.models.audit_log import AuditLog
+from app.models.knowledge import KnowledgeDocument, KnowledgeChunk, DocumentType, DocumentStatus
+from app.models.chat import ChatConversation, ChatMessage, ChatMessageSource, ChatRole
+from app.models.service_escalation import ServiceEscalation
 
 __all__ = [
     "User", "UserRole",
@@ -27,5 +30,8 @@ __all__ = [
     "Warranty", "WarrantyType",
     "Invoice",
     "Notification",
-    "AuditLog"
+    "AuditLog",
+    "KnowledgeDocument", "KnowledgeChunk", "DocumentType", "DocumentStatus",
+    "ChatConversation", "ChatMessage", "ChatMessageSource", "ChatRole",
+    "ServiceEscalation",
 ]

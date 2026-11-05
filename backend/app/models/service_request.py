@@ -49,3 +49,4 @@ class ServiceRequest(Base):
     maintenance_activities = relationship("MaintenanceActivity", back_populates="service_request", cascade="all, delete-orphan")
     spare_part_requests = relationship("SparePartRequest", back_populates="service_request", cascade="all, delete-orphan")
     recalls = relationship("Recall", back_populates="service_request", cascade="all, delete-orphan")
+    escalation = relationship("ServiceEscalation", back_populates="service_request", uselist=False, cascade="all, delete-orphan")

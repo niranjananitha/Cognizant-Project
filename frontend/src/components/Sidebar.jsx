@@ -11,6 +11,7 @@ export default function Sidebar({ activeTab, setActiveTab, userRole }) {
     { id: 'hospital-inventory', label: 'Hospital Equipment', icon: 'inventory_2' },
     { id: 'service-history', label: 'Service History', icon: 'history' },
     { id: 'health-assessment', label: 'Equipment Health Entry', icon: 'health_and_safety' },
+    { id: 'equipment-assistance', label: 'Equipment Assistance', icon: 'support_agent' },
   ];
 
   const adminNavItems = [
@@ -18,6 +19,7 @@ export default function Sidebar({ activeTab, setActiveTab, userRole }) {
     { id: 'equipment-overview', label: 'Equipment Overview', icon: 'biotech' },
     { id: 'service-history', label: 'Service Records History', icon: 'history_edu' },
     { id: 'recall-monitoring', label: 'Recall Monitoring', icon: 'report_problem' },
+    { id: 'knowledge-base', label: 'Knowledge Base Manager', icon: 'library_books' },
   ];
 
   const navItems = userRole === 'admin' ? adminNavItems : nurseNavItems;
