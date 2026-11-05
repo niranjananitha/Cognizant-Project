@@ -12,6 +12,7 @@ venv/
 
 # ---- Local databases (recreate with: python scripts/seed_database.py) ----
 *.db
+*.db.bak-*
 *.sqlite3
 
 # ---- Node / frontend (see also frontend/.gitignore) ----

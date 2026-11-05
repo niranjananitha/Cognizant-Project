@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.database.session import SessionLocal, engine
 from app.database.base import Base
+from app.database.equipment_catalog import EQUIPMENT_DETAILS
 from app.core.security import get_password_hash
 from app.models.user import User, UserRole
 from app.models.equipment import Equipment, EquipmentStatus
@@ -94,8 +95,8 @@ def seed_database():
                     machine_id=eq["id"],
                     machine_name=eq["name"],
                     category=eq["cat"],
-                    manufacturer="Certified Med OEM",
-                    model="Standard Series",
+                    manufacturer=EQUIPMENT_DETAILS[eq["id"]]["manufacturer"],
+                    model=EQUIPMENT_DETAILS[eq["id"]]["model"],
                     serial_number=f"SN-{eq['id']}",
                     department=eq["dept"],
                     location=eq["loc"],
